@@ -1,4 +1,4 @@
-
+package WebServer;
 // gist.github.com/kunst1080/7ac5595e8a845aacbe4d (SimpleWebServer Example)
 // https://stackoverflow.com/questions/3828352/what-is-a-mime-type (MIMETYPE)
 // https://www.codeproject.com/Tips/1040097/Create-a-Simple-Web-Server-in-Java-HTTP-Server (HTTPServer example)
@@ -11,9 +11,14 @@ import java.net.ServerSocket;
 import java.net.Socket;
 
 public class WebServer {
+
+    public static void main(String args[]){
+        WebServer.StartServer();
+    }
+
+
     private final static boolean DEBUG = Boolean.parseBoolean(System.getenv("JAVA_DEBUG"));
     private final static int PORT = 5000;
-    private ServerSocket server;
     public static int threadCount = 0;
 
     public static void StartServer(){
@@ -28,7 +33,6 @@ public class WebServer {
                 threadCount++;
                 thread.run();
             }
-
 
         } catch (IOException e) {
             e.printStackTrace();

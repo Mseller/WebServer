@@ -1,30 +1,46 @@
+package WebServer;
+
 import java.io.*;
 
 import java.net.Socket;
+import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.StringTokenizer;
 
 public class HttpRequest implements Runnable{
     private final String CRLF = "\r\n";
     private final boolean DEBUG;
-    private final Socket client;
+    private final Socket CLIENT;
+    private final String DATE;
 
 
     HttpRequest(Socket client, boolean debug){
-        this.client = client;
+        this.CLIENT = client;
         DEBUG = debug;
+
+        // Setting the current date
+        Locale localeUS = new Locale("us","US");
+        String zone = ZonedDateTime.now().format(DateTimeFormatter.ofPattern("z")).toString();
+        DateTimeFormatter HTTP_DATE_FORMATTER = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy H:mm:ss",localeUS);
+        DATE = LocalDateTime.now().format(HTTP_DATE_FORMATTER).toString() + " " + zone;
     }
 
-
+    /**
+     *
+     * @throws IOException
+     */
     private void processRequest() throws IOException{
 
         if(DEBUG){
             System.out.println("There are currently '" + WebServer.getThreadCount() +"' thread(s) active");
         }
         // Get the clients input stream
-        InputStream is = client.getInputStream();
+        InputStream is = CLIENT.getInputStream();
 
         // Get the clients output stream
-        OutputStream os = client.getOutputStream();
+        OutputStream os = CLIENT.getOutputStream();
         BufferedReader br = new BufferedReader(new InputStreamReader(is));
         String requestLine = br.readLine();
 
@@ -51,6 +67,8 @@ public class HttpRequest implements Runnable{
         String httpVersion = st.nextToken();
         if(httpVersion.contains("1.0")){
            send400BadRequestHeader(os);
+            os.write(("<HTML><HEAD><TITLE>Bad request</TITLE></HEAD><BODY>400 Bad Request</BODY></HTML>" + CRLF).getBytes());
+            os.write(CRLF.getBytes());
         }else {
 
             // Open the requested file.
@@ -75,39 +93,61 @@ public class HttpRequest implements Runnable{
 
         os.close();
         br.close();
-        client.close();
+        CLIENT.close();
         WebServer.minusThreadCount();
     }
 
+    /**
+     *
+     * @param os
+     */
     private void send400BadRequestHeader(OutputStream os){
         try{
             os.write(("HTTP/1.1 400 BAD REQUEST" + CRLF).getBytes()); // Status line
+            os.write(("Content-type: text/html"+ CRLF).getBytes()); // Content type line
+            os.write(("Date: "+ DATE + CRLF).getBytes()); // Date line
             os.write(CRLF.getBytes()); // Header have to end with CRLF
         }catch(IOException e){
             e.printStackTrace();
         }
     }
 
+    /**
+     *
+     * @param os
+     * @param fileName
+     */
     private void send200OKHeader(OutputStream os, String fileName){
         try{
             os.write(("HTTP/1.1 200 OK" + CRLF).getBytes()); // Status line
             os.write(("Content-type: " + contentType( fileName ) + CRLF).getBytes()); // Content type line
+            os.write(("Date: "+ DATE + CRLF).getBytes()); // Date line
             os.write(CRLF.getBytes()); // Header have to end with CRLF
         }catch(IOException e){
             e.printStackTrace();
         }
     }
 
+    /**
+     *
+     * @param os
+     */
     private void send404NotFoundHeader(OutputStream os){
         try{
             os.write(("HTTP/1.1 404 NOT FOUND" + CRLF).getBytes()); // Status line
             os.write(("Content-type: text/html"+ CRLF).getBytes()); // Content type line
+            os.write(("Date: "+ DATE + CRLF).getBytes()); // Date line
             os.write(CRLF.getBytes()); // Header have to end with CRLF
         }catch(IOException e){
             e.printStackTrace();
         }
     }
 
+    /**
+     *
+     * @param fis
+     * @param os
+     */
     private static void sendBytes(FileInputStream fis, OutputStream os){
         // Construct a 1K buffer to hold bytes on their way to the socket.
         byte[] buffer = new byte[1024];
@@ -122,6 +162,11 @@ public class HttpRequest implements Runnable{
         }
     }
 
+    /**
+     *
+     * @param fileName
+     * @return
+     */
     private static String contentType(String fileName) {
         if(fileName.endsWith(".htm") || fileName.endsWith(".html")) {
             return "text/html";
