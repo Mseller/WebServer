@@ -15,6 +15,10 @@ public class HttpRequest implements Runnable{
     private final Socket CLIENT;
     private final String DATE;
 
+    private final String BAD_REQUEST = "400 BAD REQUEST";
+    private final String FILE_NOT_FOUND = "404 FILE NOT FOUND";
+    private final String OK = "200 OK";
+
 
     HttpRequest(Socket client, boolean debug){
         this.CLIENT = client;
@@ -76,7 +80,7 @@ public class HttpRequest implements Runnable{
                     "  </BODY>\n" +
                     "</HTML>\n" +
                     "\n";
-            send400BadRequestHeader(os, response.getBytes().length);
+            sendHeader(os, BAD_REQUEST, "text/html", response.getBytes().length);
             os.write((response + CRLF).getBytes());
             os.write(CRLF.getBytes());
         }else {
@@ -95,7 +99,7 @@ public class HttpRequest implements Runnable{
             }
 
             if (fileExists) {
-                send200OKHeader(os, fileName, fileSize);
+                sendHeader(os, OK, contentType(fileName), fileSize);
                 sendBytes(fis, os);
                 os.write(CRLF.getBytes());
             } else {
@@ -108,7 +112,7 @@ public class HttpRequest implements Runnable{
                         "    404 Not Found\n" +
                         "  </BODY>\n" +
                         "</HTML>";
-                send404NotFoundHeader(os, response.getBytes().length);
+                sendHeader(os, FILE_NOT_FOUND, "text/html", response.getBytes().length);
                 os.write((response + CRLF).getBytes());
                 os.write(CRLF.getBytes());
             }
@@ -120,53 +124,21 @@ public class HttpRequest implements Runnable{
         WebServer.minusThreadCount();
     }
 
-    // TODO: Implement data length in headers
-
     /**
+     * Method for sending header to client
      *
-     * @param os
+     * @param os The output stram of the connected client
+     * @param status The status code and message of the request
+     * @param contentType The content type of the data to be sent
+     * @param fileSize The size of the data to be sent
      */
-    private void send400BadRequestHeader(OutputStream os, long fileSize){
-        try{
-            os.write(("HTTP/1.1 400 BAD REQUEST" + CRLF).getBytes()); // Status line
-            os.write(("Content-type: text/html"+ CRLF).getBytes()); // Content type line
-            os.write(("Date: "+ DATE + CRLF).getBytes()); // Date line
-            os.write(("Content-Length: "+ fileSize + CRLF).getBytes()); // FileSize line
-            os.write(CRLF.getBytes()); // Header have to end with CRLF
-        }catch(IOException e){
-            e.printStackTrace();
-        }
-    }
-
-    /**
-     *
-     * @param os
-     * @param fileName
-     * @param fileSize
-     */
-    private void send200OKHeader(OutputStream os, String fileName, long fileSize){
-        try{
-            os.write(("HTTP/1.1 200 OK" + CRLF).getBytes()); // Status line
-            os.write(("Content-type: " + contentType( fileName ) + CRLF).getBytes()); // Content type line
-            os.write(("Date: "+ DATE + CRLF).getBytes()); // Date line
-            os.write(("Content-Length: "+ fileSize + CRLF).getBytes()); // FileSize line
-            os.write(CRLF.getBytes()); // Header have to end with CRLF
-        }catch(IOException e){
-            e.printStackTrace();
-        }
-    }
-
-    /**
-     *
-     * @param os
-     */
-    private void send404NotFoundHeader(OutputStream os, long fileSize){
-        try{
-            os.write(("HTTP/1.1 404 NOT FOUND" + CRLF).getBytes()); // Status line
-            os.write(("Content-type: text/html"+ CRLF).getBytes()); // Content type line
-            os.write(("Date: "+ DATE + CRLF).getBytes()); // Date line
-            os.write(("Content-Length: "+ fileSize + CRLF).getBytes()); // FileSize line
-            os.write(CRLF.getBytes()); // Header have to end with CRLF
+    private void sendHeader(OutputStream os, String status, String contentType, long fileSize){
+        try {
+            os.write(("HTTP/1.1 " + status + CRLF).getBytes());             // Status line
+            os.write(("Content-type: " + contentType + CRLF).getBytes());   // Content type line
+            os.write(("Date: " + DATE + CRLF).getBytes());                  // Date line
+            os.write(("Content-Length: " + fileSize + CRLF).getBytes());    // FileSize line
+            os.write(CRLF.getBytes());                                      // Header have to end with CRLF
         }catch(IOException e){
             e.printStackTrace();
         }
@@ -200,8 +172,8 @@ public class HttpRequest implements Runnable{
         if(fileName.endsWith(".htm") || fileName.endsWith(".html")) {
             return "text/html";
         }
-        if(fileName.endsWith(".jpeg")) {
-            return "image/jpeg";
+        if(fileName.endsWith(".jpg")) {
+            return "image/jpg";
         }
         return "application/octet-stream"; }
 
