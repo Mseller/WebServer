@@ -18,8 +18,13 @@ public class HttpRequest implements Runnable{
     private final String BAD_REQUEST = "400 BAD REQUEST";
     private final String FILE_NOT_FOUND = "404 FILE NOT FOUND";
     private final String OK = "200 OK";
+    private final String POST = "201 CREATED"; // A post request will always result in a created, since nothing is stored
 
-
+    /**
+     *
+     * @param client
+     * @param debug
+     */
     HttpRequest(Socket client, boolean debug){
         this.CLIENT = client;
         DEBUG = debug;
@@ -36,10 +41,6 @@ public class HttpRequest implements Runnable{
      * @throws IOException
      */
     private void processRequest() throws IOException{
-
-        if(DEBUG){
-            System.out.println("There are currently '" + WebServer.getThreadCount() +"' thread(s) active");
-        }
         // Get the clients input stream
         InputStream is = CLIENT.getInputStream();
 
@@ -48,84 +49,172 @@ public class HttpRequest implements Runnable{
         BufferedReader br = new BufferedReader(new InputStreamReader(is));
         String requestLine = br.readLine();
 
-        if(DEBUG && requestLine != null){
-            System.out.println("Request line: " + requestLine);
+        // Sometimes when connecting to localhost, a empty request line
+        // is sent after the first request, resulting in an invalid request.
+        if(requestLine == null) {
+            BADRequest(os);
+        }else {
+            if (DEBUG) {
+                System.out.println("--------------------------------------------------------- DEBUG INFORMATION ---------------------------------------------------------");
+                System.out.println("Request line: " + requestLine);
 
-            String headerLine;
+                String headerLine;
+                if (br != null) {
+                    while ((headerLine = br.readLine()).length() != 0) {
+                        System.out.println(headerLine);
+                    }
+                }
+                System.out.println("-------------------------------------------------------------------------------------------------------------------------------------");
+            }
 
-            if(br != null) {
-                while ((headerLine = br.readLine()).length() != 0) {
-                    System.out.println(headerLine);
+
+            StringTokenizer st = new StringTokenizer(requestLine);
+            String requestMethod = st.nextToken();
+            String fileName = st.nextToken();
+            String httpVersion = st.nextToken();
+
+            fileName = "." + fileName;
+
+            if (httpVersion.equals("HTTP/1.0")) {
+                BADRequest(os);
+            } else {
+                switch (requestMethod) {
+                    case "GET":
+                        GETRequest(os, fileName);
+                        break;
+                    case "HEAD":
+                        HEADRequest(os, fileName);
+                        break;
+                    case "POST":
+                        POSTRequest(os, br);
+                        break;
+                    default:
+                        BADRequest(os);
                 }
             }
         }
-
-        StringTokenizer st = new StringTokenizer(requestLine);
-        st.nextToken();
-
-
-        String fileName = st.nextToken();
-
-        fileName = "." + fileName;
-
-        String httpVersion = st.nextToken();
-        if(httpVersion.contains("1.0")){
-            String response = "<!DOCTYPE html>\n" +
-                    "<HTML>\n" +
-                    "  <HEAD>\n" +
-                    "    <TITLE>Bad request</TITLE>\n" +
-                    "  </HEAD>\n" +
-                    "  <BODY>\n" +
-                    "    400 Bad Request\n" +
-                    "  </BODY>\n" +
-                    "</HTML>\n" +
-                    "\n";
-            sendHeader(os, BAD_REQUEST, "text/html", response.getBytes().length);
-            os.write((response + CRLF).getBytes());
-            os.write(CRLF.getBytes());
-        }else {
-
-            // Open the requested file.
-            FileInputStream fis = null;
-            long fileSize;
-            boolean fileExists = true;
-            try {
-                File f = new File(fileName);
-                fileSize = f.length();
-                fis = new FileInputStream(f);
-            } catch (FileNotFoundException e) {
-                fileExists = false;
-                fileSize = -1;
-            }
-
-            if (fileExists) {
-                sendHeader(os, OK, contentType(fileName), fileSize);
-                sendBytes(fis, os);
-                os.write(CRLF.getBytes());
-            } else {
-                String response = "<!DOCTYPE html>\n" +
-                        "<HTML>\n" +
-                        "  <HEAD>\n" +
-                        "    <TITLE>Not Found</TITLE>\n" +
-                        "  </HEAD>\n" +
-                        "  <BODY>\n" +
-                        "    404 Not Found\n" +
-                        "  </BODY>\n" +
-                        "</HTML>";
-                sendHeader(os, FILE_NOT_FOUND, "text/html", response.getBytes().length);
-                os.write((response + CRLF).getBytes());
-                os.write(CRLF.getBytes());
-            }
-        }
-
         os.close();
         br.close();
+        if(DEBUG){
+            System.out.println("Closing client: " +
+                    CLIENT.getInetAddress() + " " + CLIENT.getPort() +
+                    "\n\n");
+        }
         CLIENT.close();
-        WebServer.minusThreadCount();
     }
 
     /**
-     * Method for sending header to client
+     * Responds to a POST request
+     * @param os The output stream to write to
+     * @param br The buffer reader to read from
+     * @throws IOException
+     */
+    private void POSTRequest(OutputStream os, BufferedReader br) throws IOException{
+        br.readLine(); // Pretend to get the POST request and doing something with it.
+        String response = "<!DOCTYPE html>\n" +
+                "<html>\n" +
+                "  <head>\n" +
+                "    <title>Post response</title>\n" +
+                "  </head>\n" +
+                "  <body>\n" +
+                "    <p>Successfully created your POST request</p>\n" +
+                "  </body>\n" +
+                "</html>\n";
+        sendHeader(os, POST, "text/html", response.getBytes().length);
+        os.write(response.getBytes());
+        os.flush();
+    }
+
+    /**
+     * Responds to a HEAD request
+     * @param os The output stream to read from
+     * @param fileName The filename that should have been sent in the GET request
+     * @throws IOException
+     */
+    private void HEADRequest(OutputStream os, String fileName) throws IOException{
+        File f = new File(fileName);
+        if(!f.exists()){
+            String response = "<!DOCTYPE html>\n" +
+                    "<HTML>\n" +
+                    "  <HEAD>\n" +
+                    "    <TITLE>Not Found</TITLE>\n" +
+                    "  </HEAD>\n" +
+                    "  <BODY>\n" +
+                    "    404 Not Found\n" +
+                    "  </BODY>\n" +
+                    "</HTML>";
+            sendHeader(os, FILE_NOT_FOUND, "text/html", response.getBytes().length);
+        }else{
+            long fileSize = f.length();
+            sendHeader(os, OK, contentType(fileName), fileSize);
+        }
+    }
+
+    /**
+     * Responds to a bad request
+     * @param os The output stream to write to
+     * @throws IOException
+     */
+    private void BADRequest(OutputStream os) throws IOException{
+        String response = "<!DOCTYPE html>\n" +
+                "<HTML>\n" +
+                "  <HEAD>\n" +
+                "    <TITLE>Bad request</TITLE>\n" +
+                "  </HEAD>\n" +
+                "  <BODY>\n" +
+                "    400 Bad Request\n" +
+                "  </BODY>\n" +
+                "</HTML>\n" +
+                "\n";
+        sendHeader(os, BAD_REQUEST, "text/html", response.getBytes().length);
+        os.write((response + CRLF).getBytes());
+        os.write(CRLF.getBytes());
+        os.flush();
+    }
+
+    /**
+     * Responds to a get request. Will send a fileNotFound respnse if the
+     * requested file could not be found.
+     *
+     * @param os The output stream to write to
+     * @param fileName The file that was requested
+     * @throws IOException
+     */
+    private void GETRequest(OutputStream os, String fileName) throws IOException{
+        File f = new File(fileName);
+        if(!f.exists()){
+            fileNotFound(os);
+        }else{
+            FileInputStream fis = new FileInputStream(f);
+            long fileSize = f.length();
+            sendHeader(os, OK, contentType(fileName), fileSize);
+            sendBytes(fis, os);
+        }
+    }
+
+    /**
+     * Response which should be sent when a requested file could not be found
+     * @param os The output stream to write to
+     * @throws IOException
+     */
+    private void fileNotFound(OutputStream os) throws IOException{
+        String response = "<!DOCTYPE html>\n" +
+                "<HTML>\n" +
+                "  <HEAD>\n" +
+                "    <TITLE>Not Found</TITLE>\n" +
+                "  </HEAD>\n" +
+                "  <BODY>\n" +
+                "    404 Not Found\n" +
+                "  </BODY>\n" +
+                "</HTML>";
+        sendHeader(os, FILE_NOT_FOUND, "text/html", response.getBytes().length);
+        os.write((response + CRLF).getBytes());
+        os.write(CRLF.getBytes());
+        os.flush();
+    }
+
+    /**
+     * Method for sending header to client.
      *
      * @param os The output stram of the connected client
      * @param status The status code and message of the request
@@ -139,17 +228,19 @@ public class HttpRequest implements Runnable{
             os.write(("Date: " + DATE + CRLF).getBytes());                  // Date line
             os.write(("Content-Length: " + fileSize + CRLF).getBytes());    // FileSize line
             os.write(CRLF.getBytes());                                      // Header have to end with CRLF
+            os.flush();
         }catch(IOException e){
             e.printStackTrace();
         }
     }
 
     /**
+     * Streams the input file to the output stream.
      *
-     * @param fis
-     * @param os
+     * @param fis The file input stream of the file to send
+     * @param os The output stream to send the file to
      */
-    private static void sendBytes(FileInputStream fis, OutputStream os){
+    private void sendBytes(FileInputStream fis, OutputStream os){
         // Construct a 1K buffer to hold bytes on their way to the socket.
         byte[] buffer = new byte[1024];
         int bytes = 0;
@@ -158,15 +249,18 @@ public class HttpRequest implements Runnable{
             while ((bytes = fis.read(buffer)) != -1) {
                 os.write(buffer, 0, bytes);
             }
+            os.write(CRLF.getBytes());
+            os.flush();
         }catch(IOException e){
             e.printStackTrace();
         }
     }
 
     /**
+     * Method for getting the content type of the requested file.
      *
-     * @param fileName
-     * @return
+     * @param fileName The name of the requested file
+     * @return The content type of the requested file
      */
     private static String contentType(String fileName) {
         if(fileName.endsWith(".htm") || fileName.endsWith(".html")) {
@@ -177,11 +271,12 @@ public class HttpRequest implements Runnable{
         }
         return "application/octet-stream"; }
 
+
     @Override
     public void run() {
         try{
             processRequest();
-        }catch(IOException e){
+        }catch(IOException e) {
             e.printStackTrace();
         }
     }
