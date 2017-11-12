@@ -6,17 +6,31 @@ import java.net.HttpURLConnection;
 import java.net.ProtocolException;
 import java.net.URL;
 
+import java.util.List;
+import java.util.Map;
+
 public class WebClient {
-    private final static boolean DEBUG = Boolean.parseBoolean(System.getenv("JAVA_DEBUG"));
 
     public static void main(String args[]){
         String urlString = args[0];
         WebClient w = new WebClient();
-        try {
-            String r = w.getWebContent("GET", urlString + "1");
-            System.out.println(r);
-        }catch (IOException e){
-            e.printStackTrace();
+        String[] requestMethods = {"GET", "HEAD", "POST"};
+
+        for(int i = 0; i < requestMethods.length; i++) {
+            try {
+                String r;
+                if(requestMethods[i] == "POST"){
+                    r = w.getWebContent(requestMethods[i], urlString, "<name attribute=\"value\">martin</name>\r\n");
+                }else{
+                    r = w.getWebContent(requestMethods[i], urlString);
+                }
+                r = ((r != null && r.length() > 0) ? r : "\033[3mNo data provided by the server!\033[0m");
+                System.out.println("------------------- DATA ------------------");
+                System.out.println(r);
+                System.out.println("-------------------------------------------");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 
@@ -73,6 +87,9 @@ public class WebClient {
             case "GET":
                 setGetSettings(conn, timeoutMilli);
                 break;
+            case "HEAD":
+                setHeadSettings(conn, timeoutMilli);
+                break;
             case "POST":
                 setPostSettings(conn, timeoutMilli);
                 if(data != null){
@@ -88,7 +105,8 @@ public class WebClient {
     }
 
     /**
-     *  Posts data to the server
+     *  Posts data to the server.
+     *
      * @param conn The connection to send data to
      * @param data The data to send
      * @param charset The charset that is used in the data
@@ -96,7 +114,7 @@ public class WebClient {
      */
     private void postData(HttpURLConnection conn, String data, String charset) throws IOException{
         // Gets the output stream from the connection
-        DataOutputStream out = new DataOutputStream(conn.getOutputStream());
+        OutputStream out = conn.getOutputStream();
 
         // Transforms the data to be sent into bytes
         byte[] content = data.getBytes(charset);
@@ -104,9 +122,17 @@ public class WebClient {
         // Writes the data to the output stream
         out.write(content);
         out.flush();
+    }
 
-        // Closing the output stream
-        out.close();
+    private void setHeadSettings(HttpURLConnection conn, int timeoutMilli){
+        try {
+            conn.setRequestMethod("HEAD");
+        }catch(ProtocolException e){
+            e.printStackTrace();
+        }
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Macintosh; "+System.getProperty("os.name")+")");
+        conn.setRequestProperty("Accept", "text/html");
+        conn.setConnectTimeout(timeoutMilli);
     }
 
     /**
@@ -140,7 +166,7 @@ public class WebClient {
         conn.setDoInput(true);
         conn.setUseCaches(false);
         conn.setInstanceFollowRedirects(true);
-        conn.setRequestProperty("Connect-Type", "text/xml;charset=UTF-8");
+        conn.setRequestProperty("Connect-Type", "text/xml; charset=UTF-8");
         conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Macintosh; "+System.getProperty("os.name")+")");
         conn.setRequestProperty("Accept", "text/xml");
         conn.setConnectTimeout(timeoutMilli);
@@ -154,52 +180,70 @@ public class WebClient {
      * @throws IOException
      */
     private String getResponse(HttpURLConnection conn, String charset){
-        InputStream is;
+        InputStream is = null;
         try{
             // Will try to get the requested file/files
-            // if it fails, probebly the wrong URL was given
+            // if it fails, probably the wrong URL was given
             is = conn.getInputStream();
         }catch(IOException e){
             // If the wrong URL was requested, get the
             // error stream instead.
             is = conn.getErrorStream();
         }
+        if(is == null){
+            System.out.println("Could not get a input stream from the server");
+            System.out.println("This is probably due to a bad URL\n\n");
+            getHeaderFields(conn);
+            return null;
+        }else {
 
-        BufferedReader br = null;
+            BufferedReader br = null;
 
-        try{
-            br = new BufferedReader(new InputStreamReader(is, charset));
-        }catch(UnsupportedEncodingException e){
-            e.printStackTrace();
-        }
-
-        String line;
-        StringBuffer sb = new StringBuffer();
-
-        if(DEBUG){
-            System.out.println("Status: " + conn.getHeaderField(0)); // Status line
-            System.out.println("Content-type: " + conn.getHeaderField(1)); // Content type
-            System.out.println("Date: " + conn.getHeaderField(2)); // Date
-            System.out.println("Content-Length: " + conn.getHeaderField(3)); // Content length
-            System.out.print("\n\n\n");
-        }
-
-        try{
-            while ((line = br.readLine()) != null) {
-                sb.append(line).append("\r\n");
-            }
-            if(br != null) {
-                br.close();
+            try {
+                br = new BufferedReader(new InputStreamReader(is, charset));
+            } catch (UnsupportedEncodingException e) {
+                e.printStackTrace();
             }
 
-        }catch(IOException e){
-            e.printStackTrace();
+            String line;
+            StringBuffer sb = new StringBuffer();
+
+            System.out.println("----------------- HEADERS -----------------");
+            getHeaderFields(conn);
+            try {
+                while ((line = br.readLine()) != null) {
+                    sb.append(line).append("\r\n");
+                }
+                if (br != null) {
+                    br.close();
+                }
+
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return sb.toString();
         }
-        return sb.toString();
     }
 
     /**
-     *
+     * Extracts all the header fields from the current connection
+     * @param conn The connection to extract headers from
+     */
+    private void getHeaderFields(HttpURLConnection conn){
+        Map<String, List<String>> fields = conn.getHeaderFields();
+        for(Map.Entry<String, List<String>> entry : fields.entrySet()){
+            String key = entry.getKey();
+            System.out.print((key == null ? "" : key + ": "));
+            for(String s : entry.getValue()){
+                System.out.print(s + " ");
+            }
+            System.out.println();
+        }
+
+    }
+
+    /**
+     * Checks the prefix of the URL so that it is formatted correctly
      * @param urlString The url to request a connection to
      * @return The full url path
      */
