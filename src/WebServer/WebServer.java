@@ -14,8 +14,10 @@ public class WebServer {
 
     private final static boolean DEBUG = Boolean.parseBoolean(System.getenv("JAVA_DEBUG"));
     private final static int PORT = 5000;
-    public static int threadCount = 0;
 
+    /**
+     * Method for starting the WebServer
+     */
     public static void StartServer(){
         try (ServerSocket server = new ServerSocket(PORT)) {
 
@@ -25,7 +27,6 @@ public class WebServer {
                     System.out.println("Connected to client: " + client.getInetAddress() + " " +client.getPort());
                 }
                 Thread thread = new Thread(new HttpRequest(client, DEBUG));
-                threadCount++;
                 thread.run();
             }
 
@@ -33,8 +34,4 @@ public class WebServer {
             e.printStackTrace();
         }
     }
-    public static synchronized int getThreadCount() {
-        return threadCount;
-    }
-    public static synchronized void minusThreadCount(){threadCount--;}
 }
