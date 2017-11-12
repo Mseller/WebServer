@@ -44,8 +44,8 @@ public class HttpRequest implements Runnable{
         BufferedReader br = new BufferedReader(new InputStreamReader(is));
         String requestLine = br.readLine();
 
-        if(DEBUG){
-            System.out.println(requestLine);
+        if(DEBUG && requestLine != null){
+            System.out.println("Request line: " + requestLine);
 
             String headerLine;
 
@@ -66,27 +66,50 @@ public class HttpRequest implements Runnable{
 
         String httpVersion = st.nextToken();
         if(httpVersion.contains("1.0")){
-           send400BadRequestHeader(os);
-            os.write(("<HTML><HEAD><TITLE>Bad request</TITLE></HEAD><BODY>400 Bad Request</BODY></HTML>" + CRLF).getBytes());
+            String response = "<!DOCTYPE html>\n" +
+                    "<HTML>\n" +
+                    "  <HEAD>\n" +
+                    "    <TITLE>Bad request</TITLE>\n" +
+                    "  </HEAD>\n" +
+                    "  <BODY>\n" +
+                    "    400 Bad Request\n" +
+                    "  </BODY>\n" +
+                    "</HTML>\n" +
+                    "\n";
+            send400BadRequestHeader(os, response.getBytes().length);
+            os.write((response + CRLF).getBytes());
             os.write(CRLF.getBytes());
         }else {
 
             // Open the requested file.
             FileInputStream fis = null;
+            long fileSize;
             boolean fileExists = true;
             try {
-                fis = new FileInputStream(fileName);
+                File f = new File(fileName);
+                fileSize = f.length();
+                fis = new FileInputStream(f);
             } catch (FileNotFoundException e) {
                 fileExists = false;
+                fileSize = -1;
             }
 
             if (fileExists) {
-                send200OKHeader(os, fileName);
+                send200OKHeader(os, fileName, fileSize);
                 sendBytes(fis, os);
                 os.write(CRLF.getBytes());
             } else {
-                send404NotFoundHeader(os);
-                os.write(("<HTML><HEAD><TITLE>Not Found</TITLE></HEAD><BODY>404 Not Found</BODY></HTML>" + CRLF).getBytes());
+                String response = "<!DOCTYPE html>\n" +
+                        "<HTML>\n" +
+                        "  <HEAD>\n" +
+                        "    <TITLE>Not Found</TITLE>\n" +
+                        "  </HEAD>\n" +
+                        "  <BODY>\n" +
+                        "    404 Not Found\n" +
+                        "  </BODY>\n" +
+                        "</HTML>";
+                send404NotFoundHeader(os, response.getBytes().length);
+                os.write((response + CRLF).getBytes());
                 os.write(CRLF.getBytes());
             }
         }
@@ -97,15 +120,18 @@ public class HttpRequest implements Runnable{
         WebServer.minusThreadCount();
     }
 
+    // TODO: Implement data length in headers
+
     /**
      *
      * @param os
      */
-    private void send400BadRequestHeader(OutputStream os){
+    private void send400BadRequestHeader(OutputStream os, long fileSize){
         try{
             os.write(("HTTP/1.1 400 BAD REQUEST" + CRLF).getBytes()); // Status line
             os.write(("Content-type: text/html"+ CRLF).getBytes()); // Content type line
             os.write(("Date: "+ DATE + CRLF).getBytes()); // Date line
+            os.write(("Content-Length: "+ fileSize + CRLF).getBytes()); // FileSize line
             os.write(CRLF.getBytes()); // Header have to end with CRLF
         }catch(IOException e){
             e.printStackTrace();
@@ -116,12 +142,14 @@ public class HttpRequest implements Runnable{
      *
      * @param os
      * @param fileName
+     * @param fileSize
      */
-    private void send200OKHeader(OutputStream os, String fileName){
+    private void send200OKHeader(OutputStream os, String fileName, long fileSize){
         try{
             os.write(("HTTP/1.1 200 OK" + CRLF).getBytes()); // Status line
             os.write(("Content-type: " + contentType( fileName ) + CRLF).getBytes()); // Content type line
             os.write(("Date: "+ DATE + CRLF).getBytes()); // Date line
+            os.write(("Content-Length: "+ fileSize + CRLF).getBytes()); // FileSize line
             os.write(CRLF.getBytes()); // Header have to end with CRLF
         }catch(IOException e){
             e.printStackTrace();
@@ -132,11 +160,12 @@ public class HttpRequest implements Runnable{
      *
      * @param os
      */
-    private void send404NotFoundHeader(OutputStream os){
+    private void send404NotFoundHeader(OutputStream os, long fileSize){
         try{
             os.write(("HTTP/1.1 404 NOT FOUND" + CRLF).getBytes()); // Status line
             os.write(("Content-type: text/html"+ CRLF).getBytes()); // Content type line
             os.write(("Date: "+ DATE + CRLF).getBytes()); // Date line
+            os.write(("Content-Length: "+ fileSize + CRLF).getBytes()); // FileSize line
             os.write(CRLF.getBytes()); // Header have to end with CRLF
         }catch(IOException e){
             e.printStackTrace();
